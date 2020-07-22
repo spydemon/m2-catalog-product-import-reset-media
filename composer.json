@@ -1,0 +1,26 @@
+{
+  "name": "spydemon/m2-catalog_product_import_media_reset",
+  "description": "Add a new column in product import files that allows you to reset media content on imported products.",
+  "homepage": "https://github.com/spydemon/m2-catalog_product_reset_media",
+  "type": "magento2-module",
+  "authors": [
+    {
+      "name": "Kevin Hagner (Spydemon)",
+      "email": "jsaipakoimetr@spyzone.fr"
+    }
+  ],
+  "license": [
+    "MIT"
+  ],
+  "require": {
+    "magento/product-community-edition": "2.*"
+  },
+  "autoload": {
+    "files": [
+      "registration.php"
+    ],
+    "psr-4": {
+      "Spydemon\\CatalogProductImportResetMedia\\": ""
+    }
+  }
+}
