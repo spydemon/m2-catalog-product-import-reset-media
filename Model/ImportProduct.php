@@ -4,6 +4,8 @@ namespace Spydemon\CatalogProductImportResetMedia\Model;
 
 use Magento\Catalog\Api\ProductRepositoryInterface;
 use Magento\Catalog\Model\Config as CatalogConfig;
+use Magento\Catalog\Model\ResourceModel\Product\Attribute\CollectionFactory as ProductAttributeCollectionFactory;
+use Magento\Catalog\Model\ResourceModel\Product\CollectionFactory as ProductCollectionFactory;
 use Magento\CatalogImportExport\Model\Import\Product as InheritedClass;
 use Magento\CatalogImportExport\Model\Import\Product\ImageTypeProcessor;
 use Magento\CatalogImportExport\Model\Import\Product\MediaGalleryProcessor;
@@ -27,7 +29,6 @@ use Magento\Store\Model\StoreManagerInterface;
  */
 class ImportProduct extends InheritedClass
 {
-
     /**
      * @var ProductRepositoryInterface
      */
@@ -38,6 +39,22 @@ class ImportProduct extends InheritedClass
      */
     protected $storeManager;
 
+    /**
+     * @var ProductCollectionFactory
+     */
+    protected $productCollectionFactory;
+
+    /**
+     * @var ProductAttributeCollectionFactory
+     */
+    protected $productAttributeCollectionFactory;
+
+    /**
+     * @var string[]|null
+     */
+    protected $mediaAttributeCodes;
+
+    
     /**
      * ImportProduct constructor.
      *
@@ -130,6 +147,8 @@ class ImportProduct extends InheritedClass
         \Magento\Catalog\Model\Product\Url $productUrl,
         StoreManagerInterface $storeManager,
         \Magento\Catalog\Api\ProductRepositoryInterface $productRepository,
+        ProductCollectionFactory $productCollectionFactory,
+        ProductAttributeCollectionFactory $productAttributeCollectionFactory,
         array $data = [],
         array $dateAttrCodes = [],
         \Magento\Catalog\Model\Config $catalogConfig = null,
@@ -142,7 +161,9 @@ class ImportProduct extends InheritedClass
     ) {
         $this->productRepository = $productRepository;
         $this->storeManager = $storeManager;
-        return InheritedClass::__construct(
+        $this->productCollectionFactory = $productCollectionFactory;
+        $this->productAttributeCollectionFactory = $productAttributeCollectionFactory;
+        InheritedClass::__construct(
             $jsonHelper,
             $importExportData,
             $importData,
@@ -228,11 +249,10 @@ class ImportProduct extends InheritedClass
         while ($bunch = $this->_dataSourceModel->getNextBunch()) {
             foreach ($bunch as $rowNum => $rowData) {
                 $rowSku = $rowData[self::COL_SKU];
-                $product = $this->retrieveProductBySku($rowSku);
-                if ($product && @$rowData['reset_images'] == true) {
+                if (@$rowData['reset_images'] == true && ($product = $this->retrieveProductBySku($rowSku))) {
                     $productMediaGallery = $product->getData('media_gallery');
                     // Here, we add the "removed" flag to all images already on the product.
-                    $productMediaGallery['images'] = array_map(function ($e) {
+                    $productMediaGallery['images'] = array_map(static function ($e) {
                         $e['removed'] = 1;
                         return $e;
                     }, @$productMediaGallery['images'] ?: []);
@@ -258,10 +278,39 @@ class ImportProduct extends InheritedClass
     protected function retrieveProductBySku($sku)
     {
         try {
-            $product = $this->productRepository->get($sku);
+            $productCollection = $this->productCollectionFactory->create();
+
+            $productCollection->getSelect()->reset('columns')->columns(['entity_id', 'sku']);
+
+            $productCollection
+                ->setStore(0)
+                ->addFieldToFilter('sku', $sku)
+                ->addAttributeToSelect($this->getMediaAttributeCodes());
+
+            $productCollection->getSelect()->limit(1);
+            $productCollection->addMediaGalleryData();
+
+            return $productCollection->getFirstItem();
+
         } catch (NoSuchEntityException $e) {
             return null;
         }
-        return $product;
+    }
+
+    /**
+     * @return string[]
+     */
+    protected function getMediaAttributeCodes()
+    {
+        if (null === $this->mediaAttributeCodes) {
+            $productAttributeCollection = $this->productAttributeCollectionFactory->create();
+            $productAttributeCollection->setFrontendInputTypeFilter('media_image');
+            $productAttributeCollection->getSelect()->reset('columns')->columns('attribute_code');
+
+            $this->mediaAttributeCodes = $productAttributeCollection->getConnection()->fetchCol($productAttributeCollection->getSelect());
+        }
+
+        return $this->mediaAttributeCodes;
     }
 }
+
